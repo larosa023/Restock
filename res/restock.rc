@@ -1,0 +1,30 @@
+#include <windows.h>
+1 ICON "restock.ico"
+1 RT_MANIFEST "restock.manifest"
+100 RCDATA "hangar-manifest.json"
+101 RCDATA "../CHANGELOG-latest.md"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 0,1,0,0
+ PRODUCTVERSION 0,1,0,0
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_APP
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904B0"
+    BEGIN
+      VALUE "CompanyName", "larosa023"
+      VALUE "FileDescription", "Restock"
+      VALUE "FileVersion", "0.1.0"
+      VALUE "ProductName", "Restock"
+      VALUE "ProductVersion", "0.1.0"
+      VALUE "LegalCopyright", "larosa023"
+      VALUE "OriginalFilename", "Restock.exe"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x409, 1200
+  END
+END

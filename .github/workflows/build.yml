@@ -1,0 +1,90 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Parser tests
+        run: |
+          g++ -std=c++17 -Wall -Isrc tests/parse_test.cpp src/wingetparse.cpp -o parse_test
+          ./parse_test
+
+      # The exe carries a copy of Hangar's app list for offline use (it fetches the live one at runtime)
+      - name: Refresh the built-in suite list
+        run: |
+          if curl -fsSL https://raw.githubusercontent.com/larosa023/Hangar/main/manifest.json -o /tmp/hangar-manifest.json \
+             && python3 -c "import json; m=json.load(open('/tmp/hangar-manifest.json')); assert m['apps']"; then
+            cp /tmp/hangar-manifest.json res/hangar-manifest.json
+          else
+            echo "keeping the committed copy"
+          fi
+
+      - name: Install Zig
+        run: pip install ziglang
+
+      - name: Build Restock.exe
+        run: ./build.sh
+
+      - name: Package
+        run: |
+          cp README.md dist/
+          cd dist
+          zip Restock-win-x64.zip Restock.exe README.md
+          sha256sum Restock.exe Restock-win-x64.zip > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Restock-win-x64
+          path: |
+            dist/Restock.exe
+            dist/SHA256SUMS.txt
+
+      # A release is published automatically when RESTOCK_VERSION in src/common.h changes on main
+      # (or when a v* tag is pushed). Versions with a "-" such as 0.2.0-beta.1 are pre-releases (Beta).
+      - name: Decide release
+        id: rel
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VER=$(grep -oP 'RESTOCK_VERSION L"\K[^"]+' src/common.h)
+          TAG="v$VER"
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then TAG="${GITHUB_REF#refs/tags/}"; fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          if [[ "$TAG" == *-* ]]; then echo "pre=true" >> "$GITHUB_OUTPUT"; else echo "pre=false" >> "$GITHUB_OUTPUT"; fi
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"; echo "Release $TAG already exists"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"; echo "Will publish $TAG"
+          fi
+
+      - name: Release
+        if: steps.rel.outputs.publish == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.rel.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: Restock ${{ steps.rel.outputs.tag }}
+          prerelease: ${{ steps.rel.outputs.pre }}
+          body_path: CHANGELOG-latest.md
+          files: |
+            dist/Restock-win-x64.zip
+            dist/Restock.exe
+            dist/SHA256SUMS.txt
